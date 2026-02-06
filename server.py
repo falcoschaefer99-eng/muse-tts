@@ -24,6 +24,11 @@ import tempfile
 
 from mcp.server.fastmcp import FastMCP
 
+
+def log(msg: str):
+    """Print to stderr so we don't pollute the MCP JSON-RPC stdout stream."""
+    print(msg, file=sys.stderr)
+
 # ============================================
 # CONFIGURATION
 # ============================================
@@ -189,11 +194,11 @@ def play_audio(filepath: str) -> bool:
                     return True
                 except FileNotFoundError:
                     continue
-            print("MUSE TTS: No audio player found. Install alsa-utils, pulseaudio-utils, or ffmpeg.")
+            log("MUSE TTS: No audio player found. Install alsa-utils, pulseaudio-utils, or ffmpeg.")
             return False
         return True
     except Exception as e:
-        print(f"MUSE TTS playback error: {e}")
+        log(f"MUSE TTS playback error: {e}")
         return False
 
 
@@ -210,7 +215,7 @@ def generate_and_play(text: str, voice: str, speed: float) -> bool:
     engine = detect_engine()
 
     if engine == "none":
-        print("MUSE TTS: No TTS engine found. Install mlx_audio (Mac) or kokoro (any platform).")
+        log("MUSE TTS: No TTS engine found. Install mlx_audio (Mac) or kokoro (any platform).")
         return False
 
     try:
@@ -219,7 +224,7 @@ def generate_and_play(text: str, voice: str, speed: float) -> bool:
         else:
             return _generate_kokoro(text, voice, speed)
     except Exception as e:
-        print(f"MUSE TTS error: {e}")
+        log(f"MUSE TTS error: {e}")
         return False
 
 
@@ -392,19 +397,19 @@ if __name__ == "__main__":
         "none": "NOT FOUND — install mlx_audio or kokoro",
     }.get(engine, "unknown")
 
-    print("\n" + "=" * 50)
-    print("  MUSE TTS — Free Kokoro TTS for Claude")
-    print("  By The Funkatorium")
-    print("=" * 50)
-    print(f"\n  Engine: {engine_label}")
-    print(f"  Platform: {platform.system()} {platform.machine()}")
-    print(f"  Voice: {KOKORO_VOICE}")
-    print(f"  Speed: {KOKORO_SPEED}x")
-    print(f"  Voices: {len(ALL_VOICE_IDS)} available")
-    print("\n  Tools:")
-    print("    muse_speak       — Speak text")
-    print("    muse_list_voices — Browse voices")
-    print("    muse_check       — System status")
-    print("\n" + "=" * 50 + "\n")
+    log("\n" + "=" * 50)
+    log("  MUSE TTS — Free Kokoro TTS for Claude")
+    log("  By The Funkatorium")
+    log("=" * 50)
+    log(f"\n  Engine: {engine_label}")
+    log(f"  Platform: {platform.system()} {platform.machine()}")
+    log(f"  Voice: {KOKORO_VOICE}")
+    log(f"  Speed: {KOKORO_SPEED}x")
+    log(f"  Voices: {len(ALL_VOICE_IDS)} available")
+    log("\n  Tools:")
+    log("    muse_speak       — Speak text")
+    log("    muse_list_voices — Browse voices")
+    log("    muse_check       — System status")
+    log("\n" + "=" * 50 + "\n")
 
     mcp.run()
