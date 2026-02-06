@@ -118,7 +118,7 @@ Use `muse_list_voices` inside Claude to browse them interactively.
 
 ## License
 
-MIT
+MIT + Commons Clause — free for personal use, modification, and redistribution. Cannot be sold as a product or service.
 
 ---
 
