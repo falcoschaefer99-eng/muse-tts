@@ -3,8 +3,10 @@ MUSE TTS — Free Kokoro TTS for Claude
 
 Give Claude a voice. Local, private, fast.
 
-Powered by Kokoro-82M via mlx_audio (Apple Silicon native).
-No cloud API, no Docker, no GPU drivers. Just works.
+Powered by Kokoro-82M. Runs locally — no cloud APIs, no Docker.
+Auto-detects the best engine for your platform:
+  - Apple Silicon: mlx_audio (fastest)
+  - Windows/Linux: kokoro PyTorch (cross-platform)
 
 Tools:
     muse_speak       - Speak text out loud
@@ -15,7 +17,10 @@ Part of the MUSE Studio line by The Funkatorium.
 """
 
 import os
+import sys
+import platform
 import subprocess
+import tempfile
 
 from mcp.server.fastmcp import FastMCP
 
@@ -23,9 +28,37 @@ from mcp.server.fastmcp import FastMCP
 # CONFIGURATION
 # ============================================
 
-KOKORO_MODEL = "prince-canuma/Kokoro-82M"
 KOKORO_VOICE = os.getenv("KOKORO_VOICE", "am_fenrir")
 KOKORO_SPEED = float(os.getenv("KOKORO_SPEED", "1.0"))
+
+# Engine detection: mlx_audio (Apple Silicon) or kokoro (PyTorch cross-platform)
+_engine = None
+
+def detect_engine():
+    """Auto-detect the best available TTS engine."""
+    global _engine
+    if _engine is not None:
+        return _engine
+
+    # Try mlx_audio first (Apple Silicon, fastest)
+    try:
+        from mlx_audio.tts.generate import generate_audio
+        _engine = "mlx"
+        return _engine
+    except ImportError:
+        pass
+
+    # Fall back to kokoro PyTorch (cross-platform)
+    try:
+        from kokoro import KPipeline
+        _engine = "kokoro"
+        return _engine
+    except ImportError:
+        pass
+
+    _engine = "none"
+    return _engine
+
 
 # All available Kokoro voices
 VOICES = {
@@ -110,28 +143,139 @@ VOICES = {
 # Flat lookup for validation
 ALL_VOICE_IDS = {vid for group in VOICES.values() for vid, _ in group}
 
+# Language code lookup for kokoro PyTorch engine
+LANG_CODES = {
+    "a": ["af_", "am_"],
+    "b": ["bf_", "bm_"],
+    "e": ["ef_", "em_"],
+    "f": ["ff_"],
+    "h": ["hf_", "hm_"],
+    "i": ["if_", "im_"],
+    "j": ["jf_", "jm_"],
+    "p": ["pf_", "pm_"],
+    "z": ["zf_", "zm_"],
+}
+
+
+def get_lang_code(voice_id: str) -> str:
+    """Get the language code for a voice ID."""
+    for code, prefixes in LANG_CODES.items():
+        if any(voice_id.startswith(p) for p in prefixes):
+            return code
+    return "a"
+
+
+# ============================================
+# AUDIO PLAYBACK (cross-platform)
+# ============================================
+
+def play_audio(filepath: str) -> bool:
+    """Play a WAV file using the platform's native player."""
+    system = platform.system()
+    try:
+        if system == "Darwin":
+            subprocess.run(["afplay", filepath], check=True)
+        elif system == "Windows":
+            # PowerShell can play audio on any Windows install
+            subprocess.run(
+                ["powershell", "-c", f"(New-Object Media.SoundPlayer '{filepath}').PlaySync()"],
+                check=True,
+            )
+        else:
+            # Linux — try aplay (ALSA), then paplay (PulseAudio), then ffplay
+            for cmd in [["aplay", filepath], ["paplay", filepath], ["ffplay", "-nodisp", "-autoexit", filepath]]:
+                try:
+                    subprocess.run(cmd, check=True, capture_output=True)
+                    return True
+                except FileNotFoundError:
+                    continue
+            print("MUSE TTS: No audio player found. Install alsa-utils, pulseaudio-utils, or ffmpeg.")
+            return False
+        return True
+    except Exception as e:
+        print(f"MUSE TTS playback error: {e}")
+        return False
+
 
 # ============================================
 # TTS ENGINE
 # ============================================
 
+# Lazy-loaded pipeline for kokoro PyTorch engine
+_kokoro_pipelines = {}
+
+
 def generate_and_play(text: str, voice: str, speed: float) -> bool:
-    """Generate speech with Kokoro and play it."""
-    from mlx_audio.tts.generate import generate_audio
+    """Generate speech with the best available engine and play it."""
+    engine = detect_engine()
+
+    if engine == "none":
+        print("MUSE TTS: No TTS engine found. Install mlx_audio (Mac) or kokoro (any platform).")
+        return False
 
     try:
-        generate_audio(
-            text=text,
-            model_path=KOKORO_MODEL,
-            voice=voice,
-            speed=speed,
-            audio_format="wav",
-        )
-        subprocess.run(["afplay", "./audio_000.wav"], check=True)
-        return True
+        if engine == "mlx":
+            return _generate_mlx(text, voice, speed)
+        else:
+            return _generate_kokoro(text, voice, speed)
     except Exception as e:
         print(f"MUSE TTS error: {e}")
         return False
+
+
+def _generate_mlx(text: str, voice: str, speed: float) -> bool:
+    """Generate speech using mlx_audio (Apple Silicon)."""
+    from mlx_audio.tts.generate import generate_audio
+
+    generate_audio(
+        text=text,
+        model_path="prince-canuma/Kokoro-82M",
+        voice=voice,
+        speed=speed,
+        audio_format="wav",
+    )
+    return play_audio("./audio_000.wav")
+
+
+def _generate_kokoro(text: str, voice: str, speed: float) -> bool:
+    """Generate speech using kokoro PyTorch (cross-platform)."""
+    import soundfile as sf
+    from kokoro import KPipeline
+
+    lang_code = get_lang_code(voice)
+
+    # Cache pipelines by language code
+    if lang_code not in _kokoro_pipelines:
+        _kokoro_pipelines[lang_code] = KPipeline(lang_code=lang_code)
+
+    pipeline = _kokoro_pipelines[lang_code]
+
+    # Generate audio chunks and concatenate
+    import numpy as np
+    audio_chunks = []
+    for _, _, audio in pipeline(text, voice=voice, speed=speed):
+        audio_chunks.append(audio)
+
+    if not audio_chunks:
+        return False
+
+    full_audio = np.concatenate(audio_chunks)
+
+    # Write to temp file and play
+    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    tmp_path = tmp.name
+    tmp.close()
+
+    sf.write(tmp_path, full_audio, 24000)
+    result = play_audio(tmp_path)
+
+    # Cleanup
+    try:
+        os.unlink(tmp_path)
+    except OSError:
+        pass
+
+    return result
 
 
 # ============================================
@@ -146,7 +290,7 @@ def muse_speak(text: str, voice: str = "", speed: float = 0) -> str:
     """
     Speak text out loud using Kokoro TTS.
 
-    Generates natural-sounding speech locally on your Mac.
+    Generates natural-sounding speech locally on your machine.
     All processing happens on-device — nothing sent to the cloud.
 
     Args:
@@ -167,10 +311,11 @@ def muse_speak(text: str, voice: str = "", speed: float = 0) -> str:
 
     success = generate_and_play(text, voice, speed)
 
+    engine = detect_engine()
     if success:
-        return f"Spoke: \"{text[:100]}{'...' if len(text) > 100 else ''}\" (voice: {voice}, speed: {speed})"
+        return f"Spoke: \"{text[:100]}{'...' if len(text) > 100 else ''}\" (voice: {voice}, speed: {speed}, engine: {engine})"
     else:
-        return f"Failed to speak. Check that mlx_audio is installed."
+        return f"Failed to speak. Run muse_check to diagnose."
 
 
 @mcp.tool()
@@ -214,17 +359,23 @@ def muse_check() -> dict:
     """
     Check if MUSE TTS is ready to speak.
 
-    Returns status of the Kokoro TTS engine.
+    Returns status of the TTS engine and platform info.
     """
-    status = {"kokoro": "unknown", "voice": KOKORO_VOICE, "speed": KOKORO_SPEED}
+    engine = detect_engine()
+    status = {
+        "engine": engine,
+        "platform": f"{platform.system()} {platform.machine()}",
+        "voice": KOKORO_VOICE,
+        "speed": KOKORO_SPEED,
+    }
 
-    try:
-        from mlx_audio.tts.generate import generate_audio
-        status["kokoro"] = "ready"
-    except ImportError:
-        status["kokoro"] = "not installed — run: pip install mlx_audio"
-    except Exception as e:
-        status["kokoro"] = f"error: {e}"
+    if engine == "mlx":
+        status["status"] = "ready (mlx_audio — Apple Silicon)"
+    elif engine == "kokoro":
+        status["status"] = "ready (kokoro PyTorch — cross-platform)"
+    else:
+        status["status"] = "no engine found"
+        status["help"] = "Install: pip install mlx_audio (Mac M-series) or pip install kokoro soundfile (any platform)"
 
     return status
 
@@ -234,17 +385,26 @@ def muse_check() -> dict:
 # ============================================
 
 if __name__ == "__main__":
-    print("\n" + "=" * 45)
+    engine = detect_engine()
+    engine_label = {
+        "mlx": "mlx_audio (Apple Silicon)",
+        "kokoro": "kokoro PyTorch (cross-platform)",
+        "none": "NOT FOUND — install mlx_audio or kokoro",
+    }.get(engine, "unknown")
+
+    print("\n" + "=" * 50)
     print("  MUSE TTS — Free Kokoro TTS for Claude")
     print("  By The Funkatorium")
-    print("=" * 45)
-    print(f"\n  Voice: {KOKORO_VOICE}")
+    print("=" * 50)
+    print(f"\n  Engine: {engine_label}")
+    print(f"  Platform: {platform.system()} {platform.machine()}")
+    print(f"  Voice: {KOKORO_VOICE}")
     print(f"  Speed: {KOKORO_SPEED}x")
     print(f"  Voices: {len(ALL_VOICE_IDS)} available")
     print("\n  Tools:")
     print("    muse_speak       — Speak text")
     print("    muse_list_voices — Browse voices")
     print("    muse_check       — System status")
-    print("\n" + "=" * 45 + "\n")
+    print("\n" + "=" * 50 + "\n")
 
     mcp.run()

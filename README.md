@@ -2,9 +2,9 @@
 
 **Free, local text-to-speech for Claude.** Give your AI a voice.
 
-Powered by [Kokoro-82M](https://huggingface.co/prince-canuma/Kokoro-82M) via mlx_audio. Runs natively on Apple Silicon — no cloud APIs, no Docker, no CUDA. Just works.
+Powered by [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M). Runs locally — no cloud APIs, no Docker. All processing on-device, fully private.
 
-51 voices. 8 languages. Adjustable speed. Fully private.
+51 voices. 8 languages. Adjustable speed. **macOS, Windows, and Linux.**
 
 Part of the [MUSE Studio](https://ko-fi.com/thefunkatorium) line by The Funkatorium.
 
@@ -12,9 +12,17 @@ Part of the [MUSE Studio](https://ko-fi.com/thefunkatorium) line by The Funkator
 
 ### 1. Install dependencies
 
+**macOS (Apple Silicon — fastest):**
 ```bash
 pip install fastmcp mlx_audio
 ```
+
+**Windows / Linux / Intel Mac:**
+```bash
+pip install fastmcp kokoro soundfile numpy
+```
+
+> On Linux, you also need `espeak-ng`: `sudo apt install espeak-ng`
 
 ### 2. Add to Claude Desktop
 
@@ -40,6 +48,22 @@ claude mcp add muse-tts python3 /path/to/muse-tts/server.py
 ### 4. Talk
 
 Ask Claude to speak! It now has access to `muse_speak`, `muse_list_voices`, and `muse_check`.
+
+## How It Works
+
+MUSE TTS auto-detects the best engine for your platform:
+
+| Platform | Engine | Install |
+|----------|--------|---------|
+| macOS Apple Silicon (M1–M4) | mlx_audio | `pip install mlx_audio` |
+| Windows | kokoro PyTorch | `pip install kokoro soundfile numpy` |
+| Linux | kokoro PyTorch | `pip install kokoro soundfile numpy` + `apt install espeak-ng` |
+| Intel Mac | kokoro PyTorch | `pip install kokoro soundfile numpy` |
+
+Audio playback is handled natively:
+- **macOS**: `afplay`
+- **Windows**: PowerShell `SoundPlayer`
+- **Linux**: `aplay`, `paplay`, or `ffplay` (whichever is available)
 
 ## Configuration
 
@@ -84,12 +108,12 @@ Use `muse_list_voices` inside Claude to browse them interactively.
 |------|-------------|
 | `muse_speak` | Speak text with any voice at any speed (0.5x–2.0x) |
 | `muse_list_voices` | Browse all 51 voices, filter by language |
-| `muse_check` | Verify TTS engine is ready |
+| `muse_check` | Verify engine, platform, and configuration |
 
 ## Requirements
 
-- macOS with Apple Silicon (M1/M2/M3/M4)
 - Python 3.10+
+- One of: `mlx_audio` (Mac M-series) or `kokoro` + `soundfile` (any platform)
 - ~200MB disk space (model downloads on first use)
 
 ## License
