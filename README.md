@@ -4,7 +4,7 @@
 
 Powered by [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M). Runs locally — no cloud APIs, no Docker. All processing on-device, fully private.
 
-51 voices. 8 languages. Adjustable speed. **macOS, Windows, and Linux.**
+54 voices. 9 languages. Adjustable speed. **macOS, Windows, and Linux.**
 
 Part of the [MUSE Studio](https://ko-fi.com/thefunkatorium) line by The Funkatorium.
 
@@ -86,7 +86,7 @@ Set defaults via environment variables:
 
 ## Voices
 
-51 voices across 8 languages:
+54 voices across 9 languages:
 
 | Language | Female | Male |
 |----------|--------|------|
@@ -107,7 +107,7 @@ Use `muse_list_voices` inside Claude to browse them interactively.
 | Tool | What it does |
 |------|-------------|
 | `muse_speak` | Speak text with any voice at any speed (0.5x–2.0x) |
-| `muse_list_voices` | Browse all 51 voices, filter by language |
+| `muse_list_voices` | Browse all 54 voices, filter by language |
 | `muse_check` | Verify engine, platform, and configuration |
 
 ## Requirements
