@@ -216,33 +216,40 @@ def play_audio(filepath: str) -> bool:
 _kokoro_pipelines = {}
 
 
-def generate_and_play(text: str, voice: str, speed: float) -> bool:
-    """Generate speech with the best available engine and play it."""
+def generate_and_play(text: str, voice: str, speed: float) -> str:
+    """Generate speech with the best available engine and play it.
+    Returns empty string on success, error message on failure."""
     engine = detect_engine()
 
     if engine == "none":
-        log("MUSE TTS: No TTS engine found. Install mlx_audio (Mac) or kokoro (any platform).")
-        return False
+        return "No TTS engine found. Install mlx_audio (Mac) or kokoro (any platform)."
 
     try:
         if engine == "mlx":
-            return _generate_mlx(text, voice, speed)
+            ok = _generate_mlx(text, voice, speed)
         else:
-            return _generate_kokoro(text, voice, speed)
+            ok = _generate_kokoro(text, voice, speed)
+        return "" if ok else "Generation or playback failed — check server stderr logs."
     except Exception as e:
         log(f"MUSE TTS error: {e}")
-        return False
+        return f"Error: {e}"
 
 
 def _generate_mlx(text: str, voice: str, speed: float) -> bool:
     """Generate speech using mlx_audio (Apple Silicon)."""
     from mlx_audio.tts.generate import generate_audio
 
+    # Use a stable temp directory — CWD may be unpredictable when
+    # launched by Claude Desktop vs Claude Code
+    output_dir = tempfile.mkdtemp(prefix="muse_tts_")
+    old_cwd = os.getcwd()
+
     # Redirect stdout to stderr during generation — mlx_audio prints
     # colored progress info to stdout which corrupts the MCP JSON stream
     old_stdout = sys.stdout
     sys.stdout = sys.stderr
     try:
+        os.chdir(output_dir)
         generate_audio(
             text=text,
             model_path="prince-canuma/Kokoro-82M",
@@ -252,8 +259,23 @@ def _generate_mlx(text: str, voice: str, speed: float) -> bool:
         )
     finally:
         sys.stdout = old_stdout
+        os.chdir(old_cwd)
 
-    return play_audio("./audio_000.wav")
+    wav_path = os.path.join(output_dir, "audio_000.wav")
+    if not os.path.exists(wav_path):
+        log(f"MUSE TTS: wav not found at {wav_path}")
+        return False
+
+    result = play_audio(wav_path)
+
+    # Cleanup
+    try:
+        os.unlink(wav_path)
+        os.rmdir(output_dir)
+    except OSError:
+        pass
+
+    return result
 
 
 def _generate_kokoro(text: str, voice: str, speed: float) -> bool:
@@ -334,13 +356,13 @@ def muse_speak(text: str, voice: str = "", speed: float = 0) -> str:
 
     speed = max(0.5, min(2.0, speed))
 
-    success = generate_and_play(text, voice, speed)
+    error = generate_and_play(text, voice, speed)
 
     engine = detect_engine()
-    if success:
+    if not error:
         return f"Spoke: \"{text[:100]}{'...' if len(text) > 100 else ''}\" (voice: {voice}, speed: {speed}, engine: {engine})"
     else:
-        return f"Failed to speak. Run muse_check to diagnose."
+        return f"Failed to speak: {error}"
 
 
 @mcp.tool()
