@@ -45,24 +45,30 @@ def detect_engine():
     if _engine is not None:
         return _engine
 
-    # Try mlx_audio first (Apple Silicon, fastest)
+    # Redirect stdout during imports — libraries may print on load
+    old_stdout = sys.stdout
+    sys.stdout = sys.stderr
     try:
-        from mlx_audio.tts.generate import generate_audio
-        _engine = "mlx"
-        return _engine
-    except ImportError:
-        pass
+        # Try mlx_audio first (Apple Silicon, fastest)
+        try:
+            from mlx_audio.tts.generate import generate_audio
+            _engine = "mlx"
+            return _engine
+        except ImportError:
+            pass
 
-    # Fall back to kokoro PyTorch (cross-platform)
-    try:
-        from kokoro import KPipeline
-        _engine = "kokoro"
-        return _engine
-    except ImportError:
-        pass
+        # Fall back to kokoro PyTorch (cross-platform)
+        try:
+            from kokoro import KPipeline
+            _engine = "kokoro"
+            return _engine
+        except ImportError:
+            pass
 
-    _engine = "none"
-    return _engine
+        _engine = "none"
+        return _engine
+    finally:
+        sys.stdout = old_stdout
 
 
 # All available Kokoro voices
@@ -232,13 +238,21 @@ def _generate_mlx(text: str, voice: str, speed: float) -> bool:
     """Generate speech using mlx_audio (Apple Silicon)."""
     from mlx_audio.tts.generate import generate_audio
 
-    generate_audio(
-        text=text,
-        model_path="prince-canuma/Kokoro-82M",
-        voice=voice,
-        speed=speed,
-        audio_format="wav",
-    )
+    # Redirect stdout to stderr during generation — mlx_audio prints
+    # colored progress info to stdout which corrupts the MCP JSON stream
+    old_stdout = sys.stdout
+    sys.stdout = sys.stderr
+    try:
+        generate_audio(
+            text=text,
+            model_path="prince-canuma/Kokoro-82M",
+            voice=voice,
+            speed=speed,
+            audio_format="wav",
+        )
+    finally:
+        sys.stdout = old_stdout
+
     return play_audio("./audio_000.wav")
 
 
@@ -249,17 +263,23 @@ def _generate_kokoro(text: str, voice: str, speed: float) -> bool:
 
     lang_code = get_lang_code(voice)
 
-    # Cache pipelines by language code
-    if lang_code not in _kokoro_pipelines:
-        _kokoro_pipelines[lang_code] = KPipeline(lang_code=lang_code)
+    # Redirect stdout — kokoro may print during pipeline init/generation
+    old_stdout = sys.stdout
+    sys.stdout = sys.stderr
+    try:
+        # Cache pipelines by language code
+        if lang_code not in _kokoro_pipelines:
+            _kokoro_pipelines[lang_code] = KPipeline(lang_code=lang_code)
 
-    pipeline = _kokoro_pipelines[lang_code]
+        pipeline = _kokoro_pipelines[lang_code]
 
-    # Generate audio chunks and concatenate
-    import numpy as np
-    audio_chunks = []
-    for _, _, audio in pipeline(text, voice=voice, speed=speed):
-        audio_chunks.append(audio)
+        # Generate audio chunks and concatenate
+        import numpy as np
+        audio_chunks = []
+        for _, _, audio in pipeline(text, voice=voice, speed=speed):
+            audio_chunks.append(audio)
+    finally:
+        sys.stdout = old_stdout
 
     if not audio_chunks:
         return False
