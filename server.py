@@ -237,6 +237,9 @@ def generate_and_play(text: str, voice: str, speed: float) -> str:
 
 def _generate_mlx(text: str, voice: str, speed: float) -> bool:
     """Generate speech using mlx_audio (Apple Silicon)."""
+    import glob as globmod
+    import wave
+
     from mlx_audio.tts.generate import generate_audio
 
     # Use a stable temp directory — CWD may be unpredictable when
@@ -261,16 +264,41 @@ def _generate_mlx(text: str, voice: str, speed: float) -> bool:
         sys.stdout = old_stdout
         os.chdir(old_cwd)
 
-    wav_path = os.path.join(output_dir, "audio_000.wav")
-    if not os.path.exists(wav_path):
-        log(f"MUSE TTS: wav not found at {wav_path}")
+    # mlx_audio generates multiple chunks for long text:
+    # audio_000.wav, audio_001.wav, audio_002.wav, etc.
+    wav_files = sorted(globmod.glob(os.path.join(output_dir, "audio_*.wav")))
+
+    if not wav_files:
+        log(f"MUSE TTS: no wav files found in {output_dir}")
         return False
 
-    result = play_audio(wav_path)
+    # Single chunk — play directly
+    if len(wav_files) == 1:
+        result = play_audio(wav_files[0])
+    else:
+        # Multiple chunks — concatenate into one file before playing
+        log(f"MUSE TTS: concatenating {len(wav_files)} audio chunks")
+        combined_path = os.path.join(output_dir, "combined.wav")
+        try:
+            with wave.open(wav_files[0], "rb") as first:
+                params = first.getparams()
+            with wave.open(combined_path, "wb") as out:
+                out.setparams(params)
+                for wav_file in wav_files:
+                    with wave.open(wav_file, "rb") as chunk:
+                        out.writeframes(chunk.readframes(chunk.getnframes()))
+            result = play_audio(combined_path)
+        except Exception as e:
+            log(f"MUSE TTS: concatenation failed: {e}, playing first chunk only")
+            result = play_audio(wav_files[0])
 
-    # Cleanup
+    # Cleanup all generated files
+    for f in globmod.glob(os.path.join(output_dir, "*.wav")):
+        try:
+            os.unlink(f)
+        except OSError:
+            pass
     try:
-        os.unlink(wav_path)
         os.rmdir(output_dir)
     except OSError:
         pass
@@ -360,7 +388,7 @@ def muse_speak(text: str, voice: str = "", speed: float = 0) -> str:
 
     engine = detect_engine()
     if not error:
-        return f"Spoke: \"{text[:100]}{'...' if len(text) > 100 else ''}\" (voice: {voice}, speed: {speed}, engine: {engine})"
+        return f"[MUSE voice · {voice} · {speed}x]\n\n{text}"
     else:
         return f"Failed to speak: {error}"
 
