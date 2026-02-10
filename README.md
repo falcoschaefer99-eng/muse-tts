@@ -1,4 +1,4 @@
-# MUSE TTS
+# MUSE TTS Live
 
 **Free, local text-to-speech for Claude.** Give your AI a voice.
 
@@ -31,7 +31,7 @@ Open Claude Desktop settings and add to your MCP servers:
 ```json
 {
   "mcpServers": {
-    "muse-tts": {
+    "muse-tts-live": {
       "command": "python3",
       "args": ["/path/to/muse-tts/server.py"]
     }
@@ -42,7 +42,7 @@ Open Claude Desktop settings and add to your MCP servers:
 ### 3. Add to Claude Code
 
 ```bash
-claude mcp add muse-tts python3 /path/to/muse-tts/server.py
+claude mcp add muse-tts-live python3 /path/to/muse-tts/server.py
 ```
 
 ### 4. Talk
@@ -51,7 +51,7 @@ Ask Claude to speak! It now has access to `muse_speak`, `muse_list_voices`, and 
 
 ## How It Works
 
-MUSE TTS auto-detects the best engine for your platform:
+MUSE TTS Live auto-detects the best engine for your platform:
 
 | Platform | Engine | Install |
 |----------|--------|---------|
@@ -72,7 +72,7 @@ Set defaults via environment variables:
 ```json
 {
   "mcpServers": {
-    "muse-tts": {
+    "muse-tts-live": {
       "command": "python3",
       "args": ["/path/to/muse-tts/server.py"],
       "env": {

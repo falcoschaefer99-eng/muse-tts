@@ -1,5 +1,5 @@
 """
-MUSE TTS — Free Kokoro TTS for Claude
+MUSE TTS Live — Free Kokoro TTS for Claude
 
 Give Claude a voice. Local, private, fast.
 
@@ -357,7 +357,7 @@ def _generate_kokoro(text: str, voice: str, speed: float) -> bool:
 # MCP SERVER
 # ============================================
 
-mcp = FastMCP("muse-tts")
+mcp = FastMCP("muse-tts-live")
 
 
 @mcp.tool()
@@ -468,7 +468,7 @@ if __name__ == "__main__":
     }.get(engine, "unknown")
 
     log("\n" + "=" * 50)
-    log("  MUSE TTS — Free Kokoro TTS for Claude")
+    log("  MUSE TTS Live — Free Kokoro TTS for Claude")
     log("  By The Funkatorium")
     log("=" * 50)
     log(f"\n  Engine: {engine_label}")
