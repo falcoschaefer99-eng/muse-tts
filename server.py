@@ -1,16 +1,19 @@
 """
-MUSE TTS Live — Free Kokoro TTS for Claude
+MUSE TTS Live v2.0 — Voice Synthesis + Cloning for Claude
 
-Give Claude a voice. Local, private, fast.
+Give Claude a voice — preset or cloned. Local, private, fast.
 
-Powered by Kokoro-82M. Runs locally — no cloud APIs, no Docker.
-Auto-detects the best engine for your platform:
-  - Apple Silicon: mlx_audio (fastest)
-  - Windows/Linux: kokoro PyTorch (cross-platform)
+Two engines:
+  - Kokoro-82M: 54 preset voices, ~1s generation
+  - Chatterbox OG: Voice cloning from reference audio, ~7s generation
+
+Auto-detects the best platform backend:
+  - Apple Silicon: mlx_audio (fastest, both engines)
+  - Windows/Linux: PyTorch (cross-platform, both engines)
 
 Tools:
-    muse_speak       - Speak text out loud
-    muse_list_voices - Browse all available voices
+    muse_speak       - Speak text (preset or cloned voice)
+    muse_list_voices - Browse all available voices + clones
     muse_check       - Verify TTS is ready
 
 Part of the MUSE Studio line by The Funkatorium.
@@ -36,20 +39,56 @@ def log(msg: str):
 KOKORO_VOICE = os.getenv("KOKORO_VOICE", "am_fenrir")
 KOKORO_SPEED = float(os.getenv("KOKORO_SPEED", "1.0"))
 
-# Engine detection: mlx_audio (Apple Silicon) or kokoro (PyTorch cross-platform)
+# Voice clone registry — populated at startup by scanning voices/ directory
+CLONE_VOICES = {}
+
+# Display names for bundled clones
+CLONE_DISPLAY_NAMES = {
+    "rook": "Rook",
+    "pedro_pascal": "Pedro Pascal",
+    "oscar_isaac": "Oscar Isaac",
+    "idris_elba": "Idris Elba",
+    "jdm": "Jeffrey Dean Morgan",
+    "jensen_ackles": "Jensen Ackles",
+    "keanu_reeves": "Keanu Reeves",
+    "cavill": "Henry Cavill",
+    "dicaprio": "Leonardo DiCaprio",
+    "hiddleston": "Tom Hiddleston",
+}
+
+
+def scan_voices_dir():
+    """Scan voices/ directory for bundled reference WAVs."""
+    voices_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "voices")
+    if not os.path.isdir(voices_dir):
+        return
+    for f in sorted(os.listdir(voices_dir)):
+        if f.endswith(".wav"):
+            name = f[:-4]
+            CLONE_VOICES[name] = os.path.join(voices_dir, f)
+
+
+# Scan on import
+scan_voices_dir()
+
+
+# ============================================
+# ENGINE DETECTION
+# ============================================
+
 _engine = None
+_chatterbox_engine = None
+
 
 def detect_engine():
-    """Auto-detect the best available TTS engine."""
+    """Auto-detect the best available TTS engine for Kokoro presets."""
     global _engine
     if _engine is not None:
         return _engine
 
-    # Redirect stdout during imports — libraries may print on load
     old_stdout = sys.stdout
     sys.stdout = sys.stderr
     try:
-        # Try mlx_audio first (Apple Silicon, fastest)
         try:
             from mlx_audio.tts.generate import generate_audio
             _engine = "mlx"
@@ -57,7 +96,6 @@ def detect_engine():
         except ImportError:
             pass
 
-        # Fall back to kokoro PyTorch (cross-platform)
         try:
             from kokoro import KPipeline
             _engine = "kokoro"
@@ -71,7 +109,38 @@ def detect_engine():
         sys.stdout = old_stdout
 
 
-# All available Kokoro voices
+def detect_chatterbox():
+    """Check if Chatterbox voice cloning is available."""
+    global _chatterbox_engine
+    if _chatterbox_engine is not None:
+        return _chatterbox_engine
+
+    # mlx_audio supports Chatterbox natively (same generate_audio function)
+    if detect_engine() == "mlx":
+        _chatterbox_engine = "mlx"
+        return _chatterbox_engine
+
+    # Try PyTorch chatterbox
+    old_stdout = sys.stdout
+    sys.stdout = sys.stderr
+    try:
+        try:
+            from chatterbox.tts import ChatterboxTTS
+            _chatterbox_engine = "pytorch"
+            return _chatterbox_engine
+        except ImportError:
+            pass
+    finally:
+        sys.stdout = old_stdout
+
+    _chatterbox_engine = "none"
+    return _chatterbox_engine
+
+
+# ============================================
+# KOKORO VOICES
+# ============================================
+
 VOICES = {
     "American English (Female)": [
         ("af_alloy", "Alloy"),
@@ -187,13 +256,11 @@ def play_audio(filepath: str) -> bool:
         if system == "Darwin":
             subprocess.run(["afplay", filepath], check=True)
         elif system == "Windows":
-            # PowerShell can play audio on any Windows install
             subprocess.run(
                 ["powershell", "-c", f"(New-Object Media.SoundPlayer '{filepath}').PlaySync()"],
                 check=True,
             )
         else:
-            # Linux — try aplay (ALSA), then paplay (PulseAudio), then ffplay
             for cmd in [["aplay", filepath], ["paplay", filepath], ["ffplay", "-nodisp", "-autoexit", filepath]]:
                 try:
                     subprocess.run(cmd, check=True, capture_output=True)
@@ -209,15 +276,180 @@ def play_audio(filepath: str) -> bool:
 
 
 # ============================================
-# TTS ENGINE
+# TTS ENGINES
 # ============================================
 
-# Lazy-loaded pipeline for kokoro PyTorch engine
 _kokoro_pipelines = {}
 
 
+def _play_mlx_output(output_dir: str) -> bool:
+    """Play audio from mlx_audio generation, handling multi-chunk concatenation and cleanup."""
+    import glob as globmod
+    import wave
+
+    wav_files = sorted(globmod.glob(os.path.join(output_dir, "audio_*.wav")))
+
+    if not wav_files:
+        log(f"MUSE TTS: no wav files found in {output_dir}")
+        return False
+
+    if len(wav_files) == 1:
+        result = play_audio(wav_files[0])
+    else:
+        log(f"MUSE TTS: concatenating {len(wav_files)} audio chunks")
+        combined_path = os.path.join(output_dir, "combined.wav")
+        try:
+            with wave.open(wav_files[0], "rb") as first:
+                params = first.getparams()
+            with wave.open(combined_path, "wb") as out:
+                out.setparams(params)
+                for wav_file in wav_files:
+                    with wave.open(wav_file, "rb") as chunk:
+                        out.writeframes(chunk.readframes(chunk.getnframes()))
+            result = play_audio(combined_path)
+        except Exception as e:
+            log(f"MUSE TTS: concatenation failed: {e}, playing first chunk only")
+            result = play_audio(wav_files[0])
+
+    # Cleanup
+    for f in globmod.glob(os.path.join(output_dir, "*.wav")):
+        try:
+            os.unlink(f)
+        except OSError:
+            pass
+    try:
+        os.rmdir(output_dir)
+    except OSError:
+        pass
+
+    return result
+
+
+def _generate_mlx(text: str, voice: str, speed: float) -> bool:
+    """Generate Kokoro speech using mlx_audio (Apple Silicon)."""
+    from mlx_audio.tts.generate import generate_audio
+
+    output_dir = tempfile.mkdtemp(prefix="muse_tts_")
+    old_cwd = os.getcwd()
+    old_stdout = sys.stdout
+    sys.stdout = sys.stderr
+    try:
+        os.chdir(output_dir)
+        generate_audio(
+            text=text,
+            model="prince-canuma/Kokoro-82M",
+            voice=voice,
+            speed=speed,
+            audio_format="wav",
+        )
+    finally:
+        sys.stdout = old_stdout
+        os.chdir(old_cwd)
+
+    return _play_mlx_output(output_dir)
+
+
+def _generate_chatterbox_mlx(text: str, ref_audio: str) -> bool:
+    """Generate cloned speech using Chatterbox OG via mlx_audio (Apple Silicon)."""
+    from mlx_audio.tts.generate import generate_audio
+
+    output_dir = tempfile.mkdtemp(prefix="muse_tts_clone_")
+    old_cwd = os.getcwd()
+    old_stdout = sys.stdout
+    sys.stdout = sys.stderr
+    try:
+        os.chdir(output_dir)
+        generate_audio(
+            text=text,
+            model="mlx-community/Chatterbox-TTS-fp16",
+            ref_audio=ref_audio,
+            audio_format="wav",
+        )
+    finally:
+        sys.stdout = old_stdout
+        os.chdir(old_cwd)
+
+    return _play_mlx_output(output_dir)
+
+
+def _generate_kokoro(text: str, voice: str, speed: float) -> bool:
+    """Generate Kokoro speech using PyTorch (cross-platform)."""
+    import soundfile as sf
+    from kokoro import KPipeline
+
+    lang_code = get_lang_code(voice)
+
+    old_stdout = sys.stdout
+    sys.stdout = sys.stderr
+    try:
+        if lang_code not in _kokoro_pipelines:
+            _kokoro_pipelines[lang_code] = KPipeline(lang_code=lang_code)
+
+        pipeline = _kokoro_pipelines[lang_code]
+
+        import numpy as np
+        audio_chunks = []
+        for _, _, audio in pipeline(text, voice=voice, speed=speed):
+            audio_chunks.append(audio)
+    finally:
+        sys.stdout = old_stdout
+
+    if not audio_chunks:
+        return False
+
+    full_audio = np.concatenate(audio_chunks)
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    tmp_path = tmp.name
+    tmp.close()
+
+    sf.write(tmp_path, full_audio, 24000)
+    result = play_audio(tmp_path)
+
+    try:
+        os.unlink(tmp_path)
+    except OSError:
+        pass
+
+    return result
+
+
+def _generate_chatterbox_pytorch(text: str, ref_audio: str) -> bool:
+    """Generate cloned speech using Chatterbox OG via PyTorch (cross-platform)."""
+    import torch
+    import torchaudio
+    from chatterbox.tts import ChatterboxTTS
+
+    old_stdout = sys.stdout
+    sys.stdout = sys.stderr
+    try:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        model = ChatterboxTTS.from_pretrained(device=device)
+        wav = model.generate(text, audio_prompt_path=ref_audio)
+    finally:
+        sys.stdout = old_stdout
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    tmp_path = tmp.name
+    tmp.close()
+
+    torchaudio.save(tmp_path, wav, model.sr)
+    result = play_audio(tmp_path)
+
+    try:
+        os.unlink(tmp_path)
+    except OSError:
+        pass
+
+    return result
+
+
+# ============================================
+# GENERATION ROUTING
+# ============================================
+
 def generate_and_play(text: str, voice: str, speed: float) -> str:
-    """Generate speech with the best available engine and play it.
+    """Generate Kokoro preset speech and play it.
     Returns empty string on success, error message on failure."""
     engine = detect_engine()
 
@@ -235,122 +467,26 @@ def generate_and_play(text: str, voice: str, speed: float) -> str:
         return f"Error: {e}"
 
 
-def _generate_mlx(text: str, voice: str, speed: float) -> bool:
-    """Generate speech using mlx_audio (Apple Silicon)."""
-    import glob as globmod
-    import wave
+def generate_clone_and_play(text: str, ref_audio: str) -> str:
+    """Generate cloned speech and play it.
+    Returns empty string on success, error message on failure."""
+    cb = detect_chatterbox()
 
-    from mlx_audio.tts.generate import generate_audio
+    if cb == "none":
+        return "Voice cloning not available. Install mlx_audio (Mac) or chatterbox-tts (any platform)."
 
-    # Use a stable temp directory — CWD may be unpredictable when
-    # launched by Claude Desktop vs Claude Code
-    output_dir = tempfile.mkdtemp(prefix="muse_tts_")
-    old_cwd = os.getcwd()
+    if not os.path.isfile(ref_audio):
+        return f"Reference audio not found: {ref_audio}"
 
-    # Redirect stdout to stderr during generation — mlx_audio prints
-    # colored progress info to stdout which corrupts the MCP JSON stream
-    old_stdout = sys.stdout
-    sys.stdout = sys.stderr
     try:
-        os.chdir(output_dir)
-        generate_audio(
-            text=text,
-            model_path="prince-canuma/Kokoro-82M",
-            voice=voice,
-            speed=speed,
-            audio_format="wav",
-        )
-    finally:
-        sys.stdout = old_stdout
-        os.chdir(old_cwd)
-
-    # mlx_audio generates multiple chunks for long text:
-    # audio_000.wav, audio_001.wav, audio_002.wav, etc.
-    wav_files = sorted(globmod.glob(os.path.join(output_dir, "audio_*.wav")))
-
-    if not wav_files:
-        log(f"MUSE TTS: no wav files found in {output_dir}")
-        return False
-
-    # Single chunk — play directly
-    if len(wav_files) == 1:
-        result = play_audio(wav_files[0])
-    else:
-        # Multiple chunks — concatenate into one file before playing
-        log(f"MUSE TTS: concatenating {len(wav_files)} audio chunks")
-        combined_path = os.path.join(output_dir, "combined.wav")
-        try:
-            with wave.open(wav_files[0], "rb") as first:
-                params = first.getparams()
-            with wave.open(combined_path, "wb") as out:
-                out.setparams(params)
-                for wav_file in wav_files:
-                    with wave.open(wav_file, "rb") as chunk:
-                        out.writeframes(chunk.readframes(chunk.getnframes()))
-            result = play_audio(combined_path)
-        except Exception as e:
-            log(f"MUSE TTS: concatenation failed: {e}, playing first chunk only")
-            result = play_audio(wav_files[0])
-
-    # Cleanup all generated files
-    for f in globmod.glob(os.path.join(output_dir, "*.wav")):
-        try:
-            os.unlink(f)
-        except OSError:
-            pass
-    try:
-        os.rmdir(output_dir)
-    except OSError:
-        pass
-
-    return result
-
-
-def _generate_kokoro(text: str, voice: str, speed: float) -> bool:
-    """Generate speech using kokoro PyTorch (cross-platform)."""
-    import soundfile as sf
-    from kokoro import KPipeline
-
-    lang_code = get_lang_code(voice)
-
-    # Redirect stdout — kokoro may print during pipeline init/generation
-    old_stdout = sys.stdout
-    sys.stdout = sys.stderr
-    try:
-        # Cache pipelines by language code
-        if lang_code not in _kokoro_pipelines:
-            _kokoro_pipelines[lang_code] = KPipeline(lang_code=lang_code)
-
-        pipeline = _kokoro_pipelines[lang_code]
-
-        # Generate audio chunks and concatenate
-        import numpy as np
-        audio_chunks = []
-        for _, _, audio in pipeline(text, voice=voice, speed=speed):
-            audio_chunks.append(audio)
-    finally:
-        sys.stdout = old_stdout
-
-    if not audio_chunks:
-        return False
-
-    full_audio = np.concatenate(audio_chunks)
-
-    # Write to temp file and play
-    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-    tmp_path = tmp.name
-    tmp.close()
-
-    sf.write(tmp_path, full_audio, 24000)
-    result = play_audio(tmp_path)
-
-    # Cleanup
-    try:
-        os.unlink(tmp_path)
-    except OSError:
-        pass
-
-    return result
+        if cb == "mlx":
+            ok = _generate_chatterbox_mlx(text, ref_audio)
+        else:
+            ok = _generate_chatterbox_pytorch(text, ref_audio)
+        return "" if ok else "Clone generation or playback failed — check server stderr logs."
+    except Exception as e:
+        log(f"MUSE TTS clone error: {e}")
+        return f"Error: {e}"
 
 
 # ============================================
@@ -361,21 +497,43 @@ mcp = FastMCP("muse-tts-live")
 
 
 @mcp.tool()
-def muse_speak(text: str, voice: str = "", speed: float = 0) -> str:
+def muse_speak(text: str, voice: str = "", clone: str = "", ref_audio: str = "", speed: float = 0) -> str:
     """
-    Speak text out loud using Kokoro TTS.
+    Speak text out loud using local TTS.
 
-    Generates natural-sounding speech locally on your machine.
-    All processing happens on-device — nothing sent to the cloud.
+    Two modes:
+    - Preset voices (Kokoro, ~1s): use voice="am_onyx" etc.
+    - Voice cloning (Chatterbox, ~7s): use clone="rook" or ref_audio="/path/to/ref.wav"
 
     Args:
         text: The text to speak out loud
-        voice: Kokoro voice ID (e.g. "am_onyx", "af_bella"). Use muse_list_voices to see all options.
-        speed: Speed multiplier (default 1.0). Range: 0.5 to 2.0. Higher = faster.
+        voice: Kokoro preset voice ID (e.g. "am_onyx", "af_bella"). Use muse_list_voices for options.
+        clone: Name of a bundled voice clone (e.g. "rook", "pedro_pascal"). Use muse_list_voices for options.
+        ref_audio: Path to a custom reference WAV file for voice cloning (10-30s clean speech, 24kHz mono).
+        speed: Speed multiplier for Kokoro voices (default 1.0, range 0.5-2.0). Not used for clones.
 
     Returns:
         Confirmation message
     """
+    # Priority: ref_audio > clone > voice (most specific wins)
+    if ref_audio:
+        error = generate_clone_and_play(text, ref_audio)
+        if not error:
+            return f"[MUSE clone · custom ref · Chatterbox]\n\n{text}"
+        return f"Failed to speak: {error}"
+
+    if clone:
+        clone_key = clone.lower().replace(" ", "_")
+        if clone_key not in CLONE_VOICES:
+            available = ", ".join(sorted(CLONE_VOICES.keys()))
+            return f"Unknown clone '{clone}'. Available: {available}"
+        error = generate_clone_and_play(text, CLONE_VOICES[clone_key])
+        if not error:
+            display = CLONE_DISPLAY_NAMES.get(clone_key, clone_key)
+            return f"[MUSE clone · {display} · Chatterbox]\n\n{text}"
+        return f"Failed to speak: {error}"
+
+    # Default: Kokoro preset voice
     voice = voice or KOKORO_VOICE
     speed = speed or KOKORO_SPEED
 
@@ -385,46 +543,59 @@ def muse_speak(text: str, voice: str = "", speed: float = 0) -> str:
     speed = max(0.5, min(2.0, speed))
 
     error = generate_and_play(text, voice, speed)
-
-    engine = detect_engine()
     if not error:
         return f"[MUSE voice · {voice} · {speed}x]\n\n{text}"
-    else:
-        return f"Failed to speak: {error}"
+    return f"Failed to speak: {error}"
 
 
 @mcp.tool()
 def muse_list_voices(language: str = "") -> str:
     """
-    List all available Kokoro TTS voices.
+    List all available voices — presets and clones.
 
-    Returns voice IDs grouped by language. Use a voice ID with muse_speak.
+    Returns Kokoro preset voices grouped by language, plus available voice clones.
 
     Args:
-        language: Optional filter — e.g. "american", "british", "japanese", "spanish"
+        language: Optional filter — e.g. "american", "british", "japanese", "clone"
 
     Returns:
         Formatted list of available voices
     """
     lines = []
-    lines.append(f"Available Kokoro voices (default: {KOKORO_VOICE}):\n")
 
-    for group_name, voices in VOICES.items():
-        if language and language.lower() not in group_name.lower():
-            continue
-
-        lines.append(f"  {group_name}:")
-        for voice_id, display_name in voices:
-            marker = " <-- default" if voice_id == KOKORO_VOICE else ""
-            lines.append(f"    {voice_id:20s} {display_name}{marker}")
+    # Voice clones section
+    show_clones = not language or "clone" in language.lower()
+    if show_clones and CLONE_VOICES:
+        lines.append("Voice Clones (Chatterbox OG — ~7s generation):\n")
+        for clone_id in sorted(CLONE_VOICES.keys()):
+            display = CLONE_DISPLAY_NAMES.get(clone_id, clone_id)
+            lines.append(f"    {clone_id:20s} {display}")
+        lines.append(f"\n  Use: muse_speak(text, clone=\"rook\")")
+        lines.append(f"  Custom: muse_speak(text, ref_audio=\"/path/to/voice.wav\")")
         lines.append("")
 
-    if len(lines) <= 2:
-        return f"No voices found matching '{language}'. Try: american, british, spanish, japanese, french, italian, hindi, portuguese, mandarin"
+    # Kokoro presets section
+    show_presets = not language or "clone" not in language.lower()
+    if show_presets:
+        lines.append(f"Kokoro Preset Voices (~1s generation, default: {KOKORO_VOICE}):\n")
 
-    lines.append(f"Total: {len(ALL_VOICE_IDS)} voices across {len(VOICES)} languages")
-    lines.append("\nSet default voice: KOKORO_VOICE=am_onyx")
-    lines.append("Set default speed:  KOKORO_SPEED=1.1")
+        for group_name, voices in VOICES.items():
+            if language and language.lower() not in group_name.lower() and "clone" not in language.lower():
+                continue
+
+            lines.append(f"  {group_name}:")
+            for voice_id, display_name in voices:
+                marker = " <-- default" if voice_id == KOKORO_VOICE else ""
+                lines.append(f"    {voice_id:20s} {display_name}{marker}")
+            lines.append("")
+
+    if not lines:
+        return f"No voices found matching '{language}'. Try: american, british, spanish, japanese, french, clone"
+
+    clone_count = len(CLONE_VOICES)
+    preset_count = len(ALL_VOICE_IDS)
+    lines.append(f"Total: {preset_count} presets + {clone_count} clones")
+    lines.append("\nSet default: KOKORO_VOICE=am_onyx  KOKORO_SPEED=1.1")
 
     return "\n".join(lines)
 
@@ -434,23 +605,37 @@ def muse_check() -> dict:
     """
     Check if MUSE TTS is ready to speak.
 
-    Returns status of the TTS engine and platform info.
+    Returns status of both TTS engines and platform info.
     """
     engine = detect_engine()
+    cb = detect_chatterbox()
+
     status = {
-        "engine": engine,
+        "kokoro_engine": engine,
+        "chatterbox_engine": cb,
         "platform": f"{platform.system()} {platform.machine()}",
-        "voice": KOKORO_VOICE,
-        "speed": KOKORO_SPEED,
+        "default_voice": KOKORO_VOICE,
+        "default_speed": KOKORO_SPEED,
+        "preset_voices": len(ALL_VOICE_IDS),
+        "voice_clones": len(CLONE_VOICES),
     }
 
     if engine == "mlx":
-        status["status"] = "ready (mlx_audio — Apple Silicon)"
+        status["kokoro_status"] = "ready (mlx_audio — Apple Silicon)"
     elif engine == "kokoro":
-        status["status"] = "ready (kokoro PyTorch — cross-platform)"
+        status["kokoro_status"] = "ready (kokoro PyTorch)"
     else:
-        status["status"] = "no engine found"
-        status["help"] = "Install: pip install mlx_audio (Mac M-series) or pip install kokoro soundfile (any platform)"
+        status["kokoro_status"] = "not available"
+
+    if cb == "mlx":
+        status["chatterbox_status"] = "ready (mlx_audio — Apple Silicon)"
+    elif cb == "pytorch":
+        status["chatterbox_status"] = "ready (PyTorch)"
+    else:
+        status["chatterbox_status"] = "not available — install mlx_audio or chatterbox-tts"
+
+    if engine == "none" and cb == "none":
+        status["help"] = "Install: pip install mlx_audio (Mac) or pip install kokoro chatterbox-tts (any platform)"
 
     return status
 
@@ -461,24 +646,32 @@ def muse_check() -> dict:
 
 if __name__ == "__main__":
     engine = detect_engine()
+    cb = detect_chatterbox()
     engine_label = {
         "mlx": "mlx_audio (Apple Silicon)",
-        "kokoro": "kokoro PyTorch (cross-platform)",
-        "none": "NOT FOUND — install mlx_audio or kokoro",
+        "kokoro": "kokoro PyTorch",
+        "none": "NOT FOUND",
     }.get(engine, "unknown")
+    cb_label = {
+        "mlx": "mlx_audio (Apple Silicon)",
+        "pytorch": "PyTorch",
+        "none": "NOT FOUND",
+    }.get(cb, "unknown")
 
     log("\n" + "=" * 50)
-    log("  MUSE TTS Live — Free Kokoro TTS for Claude")
+    log("  MUSE TTS Live v2.0 — Voice Synthesis + Cloning")
     log("  By The Funkatorium")
     log("=" * 50)
-    log(f"\n  Engine: {engine_label}")
-    log(f"  Platform: {platform.system()} {platform.machine()}")
-    log(f"  Voice: {KOKORO_VOICE}")
-    log(f"  Speed: {KOKORO_SPEED}x")
-    log(f"  Voices: {len(ALL_VOICE_IDS)} available")
+    log(f"\n  Kokoro:     {engine_label}")
+    log(f"  Chatterbox: {cb_label}")
+    log(f"  Platform:   {platform.system()} {platform.machine()}")
+    log(f"  Voice:      {KOKORO_VOICE}")
+    log(f"  Speed:      {KOKORO_SPEED}x")
+    log(f"  Presets:    {len(ALL_VOICE_IDS)} voices")
+    log(f"  Clones:     {len(CLONE_VOICES)} voices")
     log("\n  Tools:")
-    log("    muse_speak       — Speak text")
-    log("    muse_list_voices — Browse voices")
+    log("    muse_speak       — Speak text (preset or clone)")
+    log("    muse_list_voices — Browse voices + clones")
     log("    muse_check       — System status")
     log("\n" + "=" * 50 + "\n")
 

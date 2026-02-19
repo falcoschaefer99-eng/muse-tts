@@ -3,5 +3,6 @@ __pycache__/
 *.pyo
 .env
 *.wav
+!voices/*.wav
 audio_*.wav
 .DS_Store
