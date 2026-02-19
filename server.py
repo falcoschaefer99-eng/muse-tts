@@ -3,13 +3,14 @@ MUSE TTS Live v2.0 — Voice Synthesis + Cloning for Claude
 
 Give Claude a voice — preset or cloned. Local, private, fast.
 
-Two engines:
+Engines:
   - Kokoro-82M: 54 preset voices, ~1s generation
-  - Chatterbox OG: Voice cloning from reference audio, ~7s generation
+  - IndexTTS-1.5: Voice cloning, incredible quality (Apple Silicon via mlx_audio)
+  - Chatterbox OG: Voice cloning, cross-platform fallback (Windows/Linux via PyTorch)
 
 Auto-detects the best platform backend:
-  - Apple Silicon: mlx_audio (fastest, both engines)
-  - Windows/Linux: PyTorch (cross-platform, both engines)
+  - Apple Silicon: IndexTTS-1.5 for cloning, Kokoro via mlx_audio for presets
+  - Windows/Linux: Chatterbox OG for cloning, Kokoro via PyTorch for presets
 
 Tools:
     muse_speak       - Speak text (preset or cloned voice)
@@ -44,7 +45,6 @@ CLONE_VOICES = {}
 
 # Display names for bundled clones
 CLONE_DISPLAY_NAMES = {
-    "rook": "Rook",
     "pedro_pascal": "Pedro Pascal",
     "oscar_isaac": "Oscar Isaac",
     "idris_elba": "Idris Elba",
@@ -77,7 +77,7 @@ scan_voices_dir()
 # ============================================
 
 _engine = None
-_chatterbox_engine = None
+_clone_engine = None
 
 
 def detect_engine():
@@ -109,32 +109,33 @@ def detect_engine():
         sys.stdout = old_stdout
 
 
-def detect_chatterbox():
-    """Check if Chatterbox voice cloning is available."""
-    global _chatterbox_engine
-    if _chatterbox_engine is not None:
-        return _chatterbox_engine
+def detect_clone_engine():
+    """Check which voice cloning engine is available.
+    Returns: 'indextts' (Apple Silicon), 'chatterbox' (Windows/Linux), or 'none'."""
+    global _clone_engine
+    if _clone_engine is not None:
+        return _clone_engine
 
-    # mlx_audio supports Chatterbox natively (same generate_audio function)
+    # Apple Silicon: IndexTTS-1.5 via mlx_audio (best quality)
     if detect_engine() == "mlx":
-        _chatterbox_engine = "mlx"
-        return _chatterbox_engine
+        _clone_engine = "indextts"
+        return _clone_engine
 
-    # Try PyTorch chatterbox
+    # Windows/Linux: Chatterbox OG via PyTorch (cross-platform fallback)
     old_stdout = sys.stdout
     sys.stdout = sys.stderr
     try:
         try:
             from chatterbox.tts import ChatterboxTTS
-            _chatterbox_engine = "pytorch"
-            return _chatterbox_engine
+            _clone_engine = "chatterbox"
+            return _clone_engine
         except ImportError:
             pass
     finally:
         sys.stdout = old_stdout
 
-    _chatterbox_engine = "none"
-    return _chatterbox_engine
+    _clone_engine = "none"
+    return _clone_engine
 
 
 # ============================================
@@ -349,8 +350,8 @@ def _generate_mlx(text: str, voice: str, speed: float) -> bool:
     return _play_mlx_output(output_dir)
 
 
-def _generate_chatterbox_mlx(text: str, ref_audio: str) -> bool:
-    """Generate cloned speech using Chatterbox OG via mlx_audio (Apple Silicon)."""
+def _generate_indextts_mlx(text: str, ref_audio: str) -> bool:
+    """Generate cloned speech using IndexTTS-1.5 via mlx_audio (Apple Silicon)."""
     from mlx_audio.tts.generate import generate_audio
 
     output_dir = tempfile.mkdtemp(prefix="muse_tts_clone_")
@@ -361,9 +362,10 @@ def _generate_chatterbox_mlx(text: str, ref_audio: str) -> bool:
         os.chdir(output_dir)
         generate_audio(
             text=text,
-            model="mlx-community/Chatterbox-TTS-fp16",
+            model="mlx-community/IndexTTS-1.5",
             ref_audio=ref_audio,
             audio_format="wav",
+            max_tokens=5000,
         )
     finally:
         sys.stdout = old_stdout
@@ -415,7 +417,7 @@ def _generate_kokoro(text: str, voice: str, speed: float) -> bool:
 
 
 def _generate_chatterbox_pytorch(text: str, ref_audio: str) -> bool:
-    """Generate cloned speech using Chatterbox OG via PyTorch (cross-platform)."""
+    """Generate cloned speech using Chatterbox OG via PyTorch (cross-platform fallback)."""
     import torch
     import torchaudio
     from chatterbox.tts import ChatterboxTTS
@@ -467,26 +469,30 @@ def generate_and_play(text: str, voice: str, speed: float) -> str:
         return f"Error: {e}"
 
 
-def generate_clone_and_play(text: str, ref_audio: str) -> str:
+def generate_clone_and_play(text: str, ref_audio: str) -> tuple[str, str]:
     """Generate cloned speech and play it.
-    Returns empty string on success, error message on failure."""
-    cb = detect_chatterbox()
+    Returns (error, engine_name) — error is empty string on success."""
+    clone_eng = detect_clone_engine()
 
-    if cb == "none":
-        return "Voice cloning not available. Install mlx_audio (Mac) or chatterbox-tts (any platform)."
+    if clone_eng == "none":
+        return ("Voice cloning not available. Install mlx_audio (Mac) or chatterbox-tts (any platform).", "")
 
     if not os.path.isfile(ref_audio):
-        return f"Reference audio not found: {ref_audio}"
+        return (f"Reference audio not found: {ref_audio}", "")
 
     try:
-        if cb == "mlx":
-            ok = _generate_chatterbox_mlx(text, ref_audio)
+        if clone_eng == "indextts":
+            ok = _generate_indextts_mlx(text, ref_audio)
+            engine_name = "IndexTTS-1.5"
         else:
             ok = _generate_chatterbox_pytorch(text, ref_audio)
-        return "" if ok else "Clone generation or playback failed — check server stderr logs."
+            engine_name = "Chatterbox"
+        if ok:
+            return ("", engine_name)
+        return ("Clone generation or playback failed — check server stderr logs.", "")
     except Exception as e:
         log(f"MUSE TTS clone error: {e}")
-        return f"Error: {e}"
+        return (f"Error: {e}", "")
 
 
 # ============================================
@@ -503,12 +509,12 @@ def muse_speak(text: str, voice: str = "", clone: str = "", ref_audio: str = "",
 
     Two modes:
     - Preset voices (Kokoro, ~1s): use voice="am_onyx" etc.
-    - Voice cloning (Chatterbox, ~7s): use clone="rook" or ref_audio="/path/to/ref.wav"
+    - Voice cloning (~7s): use clone="pedro_pascal" or ref_audio="/path/to/ref.wav"
 
     Args:
         text: The text to speak out loud
         voice: Kokoro preset voice ID (e.g. "am_onyx", "af_bella"). Use muse_list_voices for options.
-        clone: Name of a bundled voice clone (e.g. "rook", "pedro_pascal"). Use muse_list_voices for options.
+        clone: Name of a bundled voice clone (e.g. "pedro_pascal", "idris_elba"). Use muse_list_voices for options.
         ref_audio: Path to a custom reference WAV file for voice cloning (10-30s clean speech, 24kHz mono).
         speed: Speed multiplier for Kokoro voices (default 1.0, range 0.5-2.0). Not used for clones.
 
@@ -517,9 +523,9 @@ def muse_speak(text: str, voice: str = "", clone: str = "", ref_audio: str = "",
     """
     # Priority: ref_audio > clone > voice (most specific wins)
     if ref_audio:
-        error = generate_clone_and_play(text, ref_audio)
+        error, engine_name = generate_clone_and_play(text, ref_audio)
         if not error:
-            return f"[MUSE clone · custom ref · Chatterbox]\n\n{text}"
+            return f"[MUSE clone · custom ref · {engine_name}]\n\n{text}"
         return f"Failed to speak: {error}"
 
     if clone:
@@ -527,10 +533,10 @@ def muse_speak(text: str, voice: str = "", clone: str = "", ref_audio: str = "",
         if clone_key not in CLONE_VOICES:
             available = ", ".join(sorted(CLONE_VOICES.keys()))
             return f"Unknown clone '{clone}'. Available: {available}"
-        error = generate_clone_and_play(text, CLONE_VOICES[clone_key])
+        error, engine_name = generate_clone_and_play(text, CLONE_VOICES[clone_key])
         if not error:
             display = CLONE_DISPLAY_NAMES.get(clone_key, clone_key)
-            return f"[MUSE clone · {display} · Chatterbox]\n\n{text}"
+            return f"[MUSE clone · {display} · {engine_name}]\n\n{text}"
         return f"Failed to speak: {error}"
 
     # Default: Kokoro preset voice
@@ -564,13 +570,15 @@ def muse_list_voices(language: str = "") -> str:
     lines = []
 
     # Voice clones section
+    clone_eng = detect_clone_engine()
+    clone_engine_label = "IndexTTS-1.5" if clone_eng == "indextts" else "Chatterbox OG"
     show_clones = not language or "clone" in language.lower()
     if show_clones and CLONE_VOICES:
-        lines.append("Voice Clones (Chatterbox OG — ~7s generation):\n")
+        lines.append(f"Voice Clones ({clone_engine_label} — ~7s generation):\n")
         for clone_id in sorted(CLONE_VOICES.keys()):
             display = CLONE_DISPLAY_NAMES.get(clone_id, clone_id)
             lines.append(f"    {clone_id:20s} {display}")
-        lines.append(f"\n  Use: muse_speak(text, clone=\"rook\")")
+        lines.append(f"\n  Use: muse_speak(text, clone=\"pedro_pascal\")")
         lines.append(f"  Custom: muse_speak(text, ref_audio=\"/path/to/voice.wav\")")
         lines.append("")
 
@@ -605,14 +613,14 @@ def muse_check() -> dict:
     """
     Check if MUSE TTS is ready to speak.
 
-    Returns status of both TTS engines and platform info.
+    Returns status of all TTS engines and platform info.
     """
     engine = detect_engine()
-    cb = detect_chatterbox()
+    clone_eng = detect_clone_engine()
 
     status = {
         "kokoro_engine": engine,
-        "chatterbox_engine": cb,
+        "clone_engine": clone_eng,
         "platform": f"{platform.system()} {platform.machine()}",
         "default_voice": KOKORO_VOICE,
         "default_speed": KOKORO_SPEED,
@@ -627,14 +635,14 @@ def muse_check() -> dict:
     else:
         status["kokoro_status"] = "not available"
 
-    if cb == "mlx":
-        status["chatterbox_status"] = "ready (mlx_audio — Apple Silicon)"
-    elif cb == "pytorch":
-        status["chatterbox_status"] = "ready (PyTorch)"
+    if clone_eng == "indextts":
+        status["clone_status"] = "ready (IndexTTS-1.5 — Apple Silicon)"
+    elif clone_eng == "chatterbox":
+        status["clone_status"] = "ready (Chatterbox OG — PyTorch)"
     else:
-        status["chatterbox_status"] = "not available — install mlx_audio or chatterbox-tts"
+        status["clone_status"] = "not available — install mlx_audio or chatterbox-tts"
 
-    if engine == "none" and cb == "none":
+    if engine == "none" and clone_eng == "none":
         status["help"] = "Install: pip install mlx_audio (Mac) or pip install kokoro chatterbox-tts (any platform)"
 
     return status
@@ -646,24 +654,24 @@ def muse_check() -> dict:
 
 if __name__ == "__main__":
     engine = detect_engine()
-    cb = detect_chatterbox()
+    clone_eng = detect_clone_engine()
     engine_label = {
         "mlx": "mlx_audio (Apple Silicon)",
         "kokoro": "kokoro PyTorch",
         "none": "NOT FOUND",
     }.get(engine, "unknown")
-    cb_label = {
-        "mlx": "mlx_audio (Apple Silicon)",
-        "pytorch": "PyTorch",
+    clone_label = {
+        "indextts": "IndexTTS-1.5 (Apple Silicon)",
+        "chatterbox": "Chatterbox OG (PyTorch)",
         "none": "NOT FOUND",
-    }.get(cb, "unknown")
+    }.get(clone_eng, "unknown")
 
     log("\n" + "=" * 50)
     log("  MUSE TTS Live v2.0 — Voice Synthesis + Cloning")
     log("  By The Funkatorium")
     log("=" * 50)
-    log(f"\n  Kokoro:     {engine_label}")
-    log(f"  Chatterbox: {cb_label}")
+    log(f"\n  Kokoro:  {engine_label}")
+    log(f"  Cloning: {clone_label}")
     log(f"  Platform:   {platform.system()} {platform.machine()}")
     log(f"  Voice:      {KOKORO_VOICE}")
     log(f"  Speed:      {KOKORO_SPEED}x")

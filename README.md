@@ -2,9 +2,10 @@
 
 **Free, local text-to-speech + voice cloning for Claude.** Give your AI any voice.
 
-Two engines:
+Three engines:
 - **Kokoro-82M** — 54 preset voices, 9 languages, ~1s generation
-- **Chatterbox OG** — Voice cloning from any reference audio, ~7s generation
+- **IndexTTS-1.5** — Voice cloning, incredible quality (Apple Silicon)
+- **Chatterbox OG** — Voice cloning, cross-platform fallback (Windows/Linux)
 
 Runs locally — no cloud APIs, no Docker. All processing on-device, fully private.
 
@@ -16,7 +17,7 @@ Part of the [MUSE Studio](https://ko-fi.com/thefunkatorium) line by The Funkator
 
 ### 1. Install dependencies
 
-**macOS (Apple Silicon — fastest, both engines):**
+**macOS (Apple Silicon — fastest, best cloning quality):**
 ```bash
 pip install fastmcp mlx_audio
 ```
@@ -73,11 +74,10 @@ muse_speak("Hello world", ref_audio="/path/to/my_voice.wav")
 
 ### Bundled Voice Clones
 
-10 community voice clones included in the `voices/` directory:
+9 community voice clones included in the `voices/` directory:
 
 | Clone ID | Voice |
 |----------|-------|
-| `rook` | Rook |
 | `pedro_pascal` | Pedro Pascal |
 | `oscar_isaac` | Oscar Isaac |
 | `idris_elba` | Idris Elba |
@@ -109,12 +109,12 @@ Drop any `.wav` reference file into the `voices/` directory. It will be automati
 
 MUSE TTS Live auto-detects the best engine for your platform:
 
-| Platform | Kokoro (presets) | Chatterbox (cloning) |
-|----------|-----------------|---------------------|
-| macOS Apple Silicon (M1–M4) | mlx_audio | mlx_audio |
-| Windows | kokoro PyTorch | chatterbox-tts |
-| Linux | kokoro PyTorch | chatterbox-tts |
-| Intel Mac | kokoro PyTorch | chatterbox-tts |
+| Platform | Kokoro (presets) | Cloning engine |
+|----------|-----------------|----------------|
+| macOS Apple Silicon (M1–M4) | mlx_audio | **IndexTTS-1.5** (mlx_audio) |
+| Windows | kokoro PyTorch | Chatterbox OG (PyTorch) |
+| Linux | kokoro PyTorch | Chatterbox OG (PyTorch) |
+| Intel Mac | kokoro PyTorch | Chatterbox OG (PyTorch) |
 
 Audio playback is handled natively:
 - **macOS**: `afplay`
@@ -163,15 +163,15 @@ Use `muse_list_voices` inside Claude to browse them interactively.
 | Tool | What it does |
 |------|-------------|
 | `muse_speak` | Speak text — preset voice, named clone, or custom ref audio |
-| `muse_list_voices` | Browse 54 presets + 10 clones, filter by language or "clone" |
-| `muse_check` | Verify both engines, platform, and configuration |
+| `muse_list_voices` | Browse 54 presets + 9 clones, filter by language or "clone" |
+| `muse_check` | Verify engines, platform, and configuration |
 
 ## Requirements
 
 - Python 3.10+
 - One of: `mlx_audio` (Mac M-series) or `kokoro` + `soundfile` (any platform)
 - Optional: `chatterbox-tts` for voice cloning on non-Apple platforms
-- ~200MB disk (Kokoro model) + ~2.5GB (Chatterbox model, downloaded on first clone)
+- ~200MB disk (Kokoro model) + ~1.5GB (IndexTTS-1.5, Apple Silicon) or ~2.5GB (Chatterbox, cross-platform)
 
 ## License
 
