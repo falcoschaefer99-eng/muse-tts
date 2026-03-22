@@ -1,17 +1,37 @@
-# MUSE TTS Live v2.0
+# MUSE TTS Live
 
-**Free, local text-to-speech + voice cloning for Claude.** Give your AI any voice.
+<p align="center">
+  <em>Give your AI any voice. Free, local, private.</em>
+</p>
 
-Three engines:
-- **Kokoro-82M** — 54 preset voices, 9 languages, ~1s generation
-- **IndexTTS-1.5** — Voice cloning, incredible quality (Apple Silicon)
-- **Chatterbox OG** — Voice cloning, cross-platform fallback (Windows/Linux)
+<p align="center">
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-D4AF37?style=flat" alt="License: MIT" /></a>
+  <img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=flat&logo=python&logoColor=white" alt="Python 3.10+" />
+  <img src="https://img.shields.io/badge/Protocol-Claude%20MCP-000000?style=flat&logo=anthropic&logoColor=white" alt="Claude MCP" />
+  <img src="https://img.shields.io/badge/Version-2.0-brightgreen?style=flat" alt="v2.0" />
+</p>
 
-Runs locally — no cloud APIs, no Docker. All processing on-device, fully private.
+<p align="center">
+  <img src="https://img.shields.io/badge/macOS-Apple%20Silicon-000000?style=flat&logo=apple&logoColor=white" alt="macOS" />
+  <img src="https://img.shields.io/badge/Windows-supported-0078D4?style=flat&logo=windows&logoColor=white" alt="Windows" />
+  <img src="https://img.shields.io/badge/Linux-supported-FCC624?style=flat&logo=linux&logoColor=black" alt="Linux" />
+  <img src="https://img.shields.io/badge/Voices-54-brightgreen?style=flat" alt="54 Voices" />
+  <img src="https://img.shields.io/badge/Languages-9-brightgreen?style=flat" alt="9 Languages" />
+</p>
 
-**macOS, Windows, and Linux.**
+---
 
-Part of the [MUSE Studio](https://ko-fi.com/thefunkatorium) line by The Funkatorium.
+## What Is This?
+
+Three TTS engines, one MCP server. Ask Claude to speak and it does — through your speakers, in any of 54 voices across 9 languages, with voice cloning from any reference audio. Everything runs on your machine.
+
+> Looking for a persistent player embedded in Claude's chat? See [MUSE TTS Embed](https://github.com/falcoschaefer99-eng/muse-tts-embed).
+
+| Engine | What it does | Platform |
+|--------|-------------|----------|
+| **Kokoro-82M** | 54 preset voices, ~1s generation | All platforms |
+| **IndexTTS-1.5** | Voice cloning, incredible quality | Apple Silicon |
+| **Chatterbox OG** | Voice cloning, cross-platform fallback | Windows / Linux |
 
 ## Quick Start
 
@@ -35,8 +55,6 @@ pip install chatterbox-tts
 
 ### 2. Add to Claude Desktop
 
-Open Claude Desktop settings and add to your MCP servers:
-
 ```json
 {
   "mcpServers": {
@@ -56,44 +74,24 @@ claude mcp add muse-tts-live python3 /path/to/muse-tts/server.py
 
 ### 4. Talk
 
-Ask Claude to speak! It now has access to `muse_speak`, `muse_list_voices`, and `muse_check`.
+Ask Claude to speak. It now has `muse_speak`, `muse_list_voices`, and `muse_check`.
 
 ## Voice Cloning
 
-Clone any voice from a short reference audio clip.
+Clone any voice from a short reference audio clip:
 
-**Use a bundled voice clone:**
 ```
-muse_speak("To be or not to be", clone="pedro_pascal")
-```
-
-**Use your own reference audio:**
-```
-muse_speak("Hello world", ref_audio="/path/to/my_voice.wav")
+"Speak this using the reference audio at ~/Downloads/my_voice.wav"
 ```
 
-### Bundled Voice Clones
+### Adding Permanent Clones
 
-9 community voice clones included in the `voices/` directory:
+Drop any `.wav` reference file into the `voices/` directory. It will be automatically detected on server restart and available as `clone="filename"` (without the .wav extension).
 
-| Clone ID | Voice |
-|----------|-------|
-| `pedro_pascal` | Pedro Pascal |
-| `oscar_isaac` | Oscar Isaac |
-| `idris_elba` | Idris Elba |
-| `jdm` | Jeffrey Dean Morgan |
-| `jensen_ackles` | Jensen Ackles |
-| `keanu_reeves` | Keanu Reeves |
-| `cavill` | Henry Cavill |
-| `dicaprio` | Leonardo DiCaprio |
-| `hiddleston` | Tom Hiddleston |
-
-### Custom Voice Cloning
-
-To clone any voice, provide a reference audio file:
+### Reference Audio Tips
 
 - **Format**: WAV, 24kHz, mono
-- **Length**: 10–30 seconds of clean speech
+- **Length**: 10-30 seconds of clean speech
 - **Quality**: Clear audio, minimal background noise
 
 Convert your audio:
@@ -101,60 +99,33 @@ Convert your audio:
 ffmpeg -i input.mp3 -ar 24000 -ac 1 -t 15 reference.wav
 ```
 
-### Adding Permanent Clones
-
-Drop any `.wav` reference file into the `voices/` directory. It will be automatically detected on server restart and available as `clone="filename"` (without the .wav extension).
-
-## How It Works
-
-MUSE TTS Live auto-detects the best engine for your platform:
-
-| Platform | Kokoro (presets) | Cloning engine |
-|----------|-----------------|----------------|
-| macOS Apple Silicon (M1–M4) | mlx_audio | **IndexTTS-1.5** (mlx_audio) |
-| Windows | kokoro PyTorch | Chatterbox OG (PyTorch) |
-| Linux | kokoro PyTorch | Chatterbox OG (PyTorch) |
-| Intel Mac | kokoro PyTorch | Chatterbox OG (PyTorch) |
-
-Audio playback is handled natively:
-- **macOS**: `afplay`
-- **Windows**: PowerShell `SoundPlayer`
-- **Linux**: `aplay`, `paplay`, or `ffplay` (whichever is available)
-
 ## Configuration
 
-Set defaults via environment variables:
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `KOKORO_VOICE` | `am_onyx` | Default voice ID |
+| `KOKORO_SPEED` | `1.0` | Speed multiplier (0.5 - 2.0) |
 
-```json
-{
-  "mcpServers": {
-    "muse-tts-live": {
-      "command": "python3",
-      "args": ["/path/to/muse-tts/server.py"],
-      "env": {
-        "KOKORO_VOICE": "am_onyx",
-        "KOKORO_SPEED": "1.1"
-      }
-    }
-  }
-}
-```
+## Voices
 
-## Preset Voices
+54 preset voices across 9 languages:
 
-54 voices across 9 languages:
+<details>
+<summary><strong>Full voice list</strong></summary>
 
 | Language | Female | Male |
 |----------|--------|------|
 | American English | af_alloy, af_aoede, af_bella, af_heart, af_jessica, af_kore, af_nicole, af_nova, af_river, af_sarah, af_sky | am_adam, am_echo, am_eric, am_fenrir, am_liam, am_michael, am_onyx, am_puck, am_santa |
 | British English | bf_alice, bf_emma, bf_isabella, bf_lily | bm_daniel, bm_fable, bm_george, bm_lewis |
 | Spanish | ef_dora | em_alex, em_santa |
-| French | ff_siwis | — |
+| French | ff_siwis | -- |
 | Hindi | hf_alpha, hf_beta | hm_omega, hm_psi |
 | Italian | if_sara | im_nicola |
 | Japanese | jf_alpha, jf_gongitsune, jf_nezumi, jf_tebukuro | jm_kumo |
 | Portuguese | pf_dora | pm_alex, pm_santa |
 | Mandarin | zf_xiaobei, zf_xiaoni, zf_xiaoxiao, zf_xiaoyi | zm_yunjian, zm_yunxi, zm_yunxia, zm_yunyang |
+
+</details>
 
 Use `muse_list_voices` inside Claude to browse them interactively.
 
@@ -163,20 +134,37 @@ Use `muse_list_voices` inside Claude to browse them interactively.
 | Tool | What it does |
 |------|-------------|
 | `muse_speak` | Speak text — preset voice, named clone, or custom ref audio |
-| `muse_list_voices` | Browse 54 presets + 9 clones, filter by language or "clone" |
+| `muse_list_voices` | Browse 54 presets + any clones, filter by language or "clone" |
 | `muse_check` | Verify engines, platform, and configuration |
+
+## How It Works
+
+Auto-detects the best engine for your platform:
+
+| Platform | Preset Engine | Cloning Engine |
+|----------|--------------|----------------|
+| macOS Apple Silicon | mlx_audio | IndexTTS-1.5 |
+| Windows | kokoro PyTorch | Chatterbox OG |
+| Linux | kokoro PyTorch | Chatterbox OG |
+| Intel Mac | kokoro PyTorch | Chatterbox OG |
+
+Audio playback is handled natively (`afplay` on Mac, `SoundPlayer` on Windows, `aplay`/`paplay` on Linux).
 
 ## Requirements
 
 - Python 3.10+
 - One of: `mlx_audio` (Mac M-series) or `kokoro` + `soundfile` (any platform)
 - Optional: `chatterbox-tts` for voice cloning on non-Apple platforms
-- ~200MB disk (Kokoro model) + ~1.5GB (IndexTTS-1.5, Apple Silicon) or ~2.5GB (Chatterbox, cross-platform)
+- ~200MB disk (Kokoro model) + ~1.5GB (IndexTTS-1.5) or ~2.5GB (Chatterbox)
 
 ## License
 
-MIT + Commons Clause — free for personal use, modification, and redistribution. Cannot be sold as a product or service.
+MIT License. See [LICENSE](LICENSE) for full terms.
 
 ---
 
-Built by [The Funkatorium](https://ko-fi.com/thefunkatorium)
+<p align="center">
+  <a href="https://linktr.ee/musestudio95">
+    <img src="https://img.shields.io/badge/Built%20by-The%20Funkatorium-D4AF37?style=flat" alt="Built by The Funkatorium" />
+  </a>
+</p>
