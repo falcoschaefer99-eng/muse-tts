@@ -23,14 +23,14 @@
 
 ## What Is This?
 
-Three TTS engines, one MCP server. Ask Claude to speak and it does — through your speakers, in any of 54 voices across 9 languages, with voice cloning from any reference audio. Everything runs on your machine.
+Three TTS engines, one MCP server. Ask Claude to speak and it does — through your speakers, in any of 54 voices, with cloning from any reference audio. Nothing leaves your machine.
 
 > Looking for a persistent player embedded in Claude's chat? See [MUSE TTS Embed](https://github.com/falcoschaefer99-eng/muse-tts-embed).
 
 | Engine | What it does | Platform |
 |--------|-------------|----------|
 | **Kokoro-82M** | 54 preset voices, ~1s generation | All platforms |
-| **IndexTTS-1.5** | Voice cloning, incredible quality | Apple Silicon |
+| **IndexTTS-1.5** | Natural voice cloning | Apple Silicon |
 | **Chatterbox OG** | Voice cloning, cross-platform fallback | Windows / Linux |
 
 ## Quick Start
