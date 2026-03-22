@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <em>Give your AI any voice. Free, local, private.</em>
+  <em>Give your AI any voice. Nothing leaves your machine.</em>
 </p>
 
 <p align="center">
@@ -136,7 +136,7 @@ Use `muse_list_voices` inside Claude to browse them interactively.
 | Tool | What it does |
 |------|-------------|
 | `muse_speak` | Speak text — preset voice, named clone, or custom ref audio |
-| `muse_list_voices` | Browse 54 presets + any clones, filter by language or "clone" |
+| `muse_list_voices` | Browse all voices and clones, filter by language |
 | `muse_check` | Verify engines, platform, and configuration |
 
 ## How It Works
