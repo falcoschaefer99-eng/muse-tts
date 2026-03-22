@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./banner.png" alt="MUSE TTS Live" width="600" />
+  <img src="./banner.png" alt="MUSE TTS Live" width="800" />
 </p>
 
 <p align="center">
@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-D4AF37?style=flat" alt="License: MIT" /></a>
+  <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-D4AF37?style=flat" alt="License: Apache 2.0" /></a>
   <img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=flat&logo=python&logoColor=white" alt="Python 3.10+" />
   <img src="https://img.shields.io/badge/Protocol-Claude%20MCP-000000?style=flat&logo=anthropic&logoColor=white" alt="Claude MCP" />
   <img src="https://img.shields.io/badge/Version-2.0-brightgreen?style=flat" alt="v2.0" />
@@ -161,7 +161,9 @@ Audio playback is handled natively (`afplay` on Mac, `SoundPlayer` on Windows, `
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for full terms.
+Licensed under the [Apache License, Version 2.0](LICENSE).
+
+Copyright 2026 The Funkatorium (Falco & Rook Schäfer). Protected under German Copyright Law (Urheberrechtsgesetz). Jurisdiction: Amtsgericht Berlin.
 
 ---
 
