@@ -37,7 +37,7 @@ Three TTS engines, one MCP server. Ask Claude to speak and it does — through y
 
 ### 1. Install dependencies
 
-**macOS (Apple Silicon — fastest, best cloning quality):**
+**macOS (Apple Silicon — fastest):**
 ```bash
 pip install fastmcp mlx_audio
 ```
@@ -78,7 +78,7 @@ Ask Claude to speak. It now has `muse_speak`, `muse_list_voices`, and `muse_chec
 
 ## Voice Cloning
 
-Clone any voice from a short reference audio clip:
+Clone any voice from a reference clip:
 
 ```
 "Speak this using the reference audio at ~/Downloads/my_voice.wav"
@@ -86,7 +86,7 @@ Clone any voice from a short reference audio clip:
 
 ### Adding Permanent Clones
 
-Drop any `.wav` reference file into the `voices/` directory. It will be automatically detected on server restart and available as `clone="filename"` (without the .wav extension).
+Drop any `.wav` into `voices/`. Detected on restart, available as `clone="filename"` (without the .wav extension).
 
 ### Reference Audio Tips
 
