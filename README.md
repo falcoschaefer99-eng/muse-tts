@@ -1,4 +1,6 @@
-# MUSE TTS Live
+<p align="center">
+  <img src="./banner.png" alt="MUSE TTS Live" width="600" />
+</p>
 
 <p align="center">
   <em>Give your AI any voice. Free, local, private.</em>
