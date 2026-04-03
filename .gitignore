@@ -6,3 +6,5 @@ __pycache__/
 !voices/*.wav
 audio_*.wav
 .DS_Store
+falcoschaefer99-eng/
+test_ab.py
