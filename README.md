@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <em>Give your AI any voice. Nothing leaves your machine.</em>
+  <img src="https://readme-typing-svg.demolab.com?font=Montserrat&weight=500&size=22&pause=1200&color=D4AF37&center=true&vCenter=true&width=900&lines=Give+your+AI+any+voice.;54+voices%2C+3+engines%2C+fully+local.;Nothing+leaves+your+machine." alt="MUSE TTS Live tagline" />
 </p>
 
 <p align="center">
