@@ -39,18 +39,27 @@ Three TTS engines, one MCP server. Ask Claude to speak and it does — through y
 
 ### 1. Install dependencies
 
+**Which file for your platform?**
+
+| Platform | File |
+|----------|------|
+| Apple Silicon Mac (M1/M2/M3/M4) | `requirements-macos.txt` |
+| Intel Mac, Windows, Linux (preset voices only) | `requirements-standard.txt` |
+| Intel Mac, Windows, Linux (+ voice cloning) | `requirements-cloning.txt` |
+
 **macOS (Apple Silicon — fastest):**
 ```bash
-pip install fastmcp mlx_audio
+pip install -r requirements-macos.txt --require-hashes
 ```
 
-**Windows / Linux / Intel Mac:**
+**Windows / Linux / Intel Mac — preset voices only:**
 ```bash
-# Preset voices only
-pip install fastmcp kokoro soundfile numpy
+pip install -r requirements-standard.txt --require-hashes
+```
 
-# Add voice cloning
-pip install chatterbox-tts
+**Windows / Linux / Intel Mac — add voice cloning:**
+```bash
+pip install -r requirements-cloning.txt --require-hashes
 ```
 
 > On Linux, you also need `espeak-ng`: `sudo apt install espeak-ng`
