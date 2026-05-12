@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./banner.png" alt="MUSE TTS Live" width="800" />
+  <img src="https://raw.githubusercontent.com/falcoschaefer99-eng/muse-tts/main/banner.png" alt="MUSE TTS Live" width="800" />
 </p>
 
 <p align="center">
@@ -23,6 +23,26 @@
 
 ---
 
+## Install
+
+Quickest path — install from PyPI:
+
+```bash
+pip install muse-tts            # preset voices only (Kokoro)
+pip install muse-tts[cloning]   # + voice cloning (Chatterbox, cross-platform)
+pip install muse-tts[macos]     # + Apple Silicon optimization (mlx_audio + IndexTTS cloning)
+```
+
+> Note for Apple Silicon users: `[macos]` includes both Kokoro optimization AND IndexTTS voice cloning. You don't need `[cloning]` in addition.
+
+Then start the server:
+
+```bash
+muse-tts
+```
+
+---
+
 ## What Is This?
 
 Three TTS engines, one MCP server. Ask Claude to speak and it does — through your speakers, in any of 54 voices, with cloning from any reference audio. Nothing leaves your machine.
@@ -35,9 +55,33 @@ Three TTS engines, one MCP server. Ask Claude to speak and it does — through y
 | **IndexTTS-1.5** | Natural voice cloning | Apple Silicon |
 | **Chatterbox OG** | Voice cloning, cross-platform fallback | Windows / Linux |
 
-## Quick Start
+## Add to Claude
 
-### 1. Install dependencies
+### Claude Desktop
+
+```json
+{
+  "mcpServers": {
+    "muse-tts-live": {
+      "command": "muse-tts"
+    }
+  }
+}
+```
+
+### Claude Code
+
+```bash
+claude mcp add muse-tts-live muse-tts
+```
+
+Then ask Claude to speak. It now has `muse_speak`, `muse_list_voices`, and `muse_check`.
+
+---
+
+## Install from source (developers)
+
+If you're cloning the repo to hack on it or need pinned hashes:
 
 **Which file for your platform?**
 
@@ -64,7 +108,13 @@ pip install -r requirements-cloning.txt --require-hashes
 
 > On Linux, you also need `espeak-ng`: `sudo apt install espeak-ng`
 
-### 2. Add to Claude Desktop
+Then run the server directly:
+
+```bash
+python server.py
+```
+
+Or add the cloned repo path to Claude Desktop:
 
 ```json
 {
@@ -77,16 +127,6 @@ pip install -r requirements-cloning.txt --require-hashes
 }
 ```
 
-### 3. Add to Claude Code
-
-```bash
-claude mcp add muse-tts-live python3 /path/to/muse-tts/server.py
-```
-
-### 4. Talk
-
-Ask Claude to speak. It now has `muse_speak`, `muse_list_voices`, and `muse_check`.
-
 ## Voice Cloning
 
 Clone any voice from a reference clip:
@@ -97,7 +137,7 @@ Clone any voice from a reference clip:
 
 ### Adding Permanent Clones
 
-Drop any `.wav` into `voices/`. Detected on restart, available as `clone="filename"` (without the .wav extension).
+Bring your own reference audio: drop a `.wav` into `voices/`, detected on restart, available as `clone="filename"` (without the .wav extension). Reference samples are not bundled with the package — bring your own.
 
 ### Reference Audio Tips
 

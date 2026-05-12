@@ -1,0 +1,10 @@
+include LICENSE
+include README.md
+include pyproject.toml
+recursive-include muse_tts *.py
+global-exclude __pycache__
+global-exclude *.py[cod]
+exclude banner.png
+prune voices
+prune falcoschaefer99-eng
+prune tests

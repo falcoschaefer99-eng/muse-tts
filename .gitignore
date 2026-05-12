@@ -8,3 +8,6 @@ audio_*.wav
 .DS_Store
 falcoschaefer99-eng/
 test_ab.py
+dist/
+build/
+*.egg-info/

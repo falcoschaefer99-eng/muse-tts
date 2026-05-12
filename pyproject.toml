@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "muse-tts"
+version = "2.0.0"
+description = "Give your AI any voice. 54 voices, 3 engines, fully local. Nothing leaves your machine."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Falco Schafer" }]
+keywords = ["tts", "voice", "mcp", "claude", "kokoro", "voice-cloning", "ai"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+dependencies = [
+    "fastmcp~=3.2.4",
+    "kokoro~=0.9.4",
+    "soundfile~=0.13.1",
+]
+
+[project.optional-dependencies]
+cloning = [
+    "chatterbox-tts~=0.1.7",
+]
+macos = [
+    "mlx-audio~=0.4.3",
+]
+
+[project.urls]
+Homepage = "https://github.com/falcoschaefer99-eng/muse-tts"
+Repository = "https://github.com/falcoschaefer99-eng/muse-tts"
+Issues = "https://github.com/falcoschaefer99-eng/muse-tts/issues"
+
+[project.scripts]
+muse-tts = "muse_tts.server:main"
+
+[tool.setuptools.packages.find]
+include = ["muse_tts*"]
+exclude = ["voices*", "falcoschaefer99*", "tests*"]
+
+[tool.setuptools.package-data]
+# explicit — do not bundle anything unintended
+muse_tts = []
